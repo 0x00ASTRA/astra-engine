@@ -1,0 +1,5 @@
+width = 800
+height = 800
+title = "Astra Engine"
+mode = "windowed"
+target_fps = 120
