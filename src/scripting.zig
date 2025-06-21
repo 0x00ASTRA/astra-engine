@@ -15,6 +15,12 @@ pub const CFn = *const fn (state: ?*LuaState) callconv(.C) c_int;
 const event_system = @import("event_system.zig");
 const Event = event_system.Event;
 
+pub const FnEntry = struct {
+    table: [:0]const u8,
+    name: [:0]const u8,
+    func: CFn,
+};
+
 // ##################################################
 // #                  ENGINE                        #
 // ##################################################
@@ -406,6 +412,10 @@ fn log(lua: *Lua) c_int {
 //     return 1;
 // }
 
+const FN_ENTRIES = [_]FnEntry{
+    .{ .table = "Engine", .name = "log", .func = zlua.wrap(log) }, // MUST USE WRAP ON Fn's
+};
+
 // ##################################################
 // #                  SCRIPTING                     #
 // ##################################################
@@ -426,51 +436,43 @@ pub const Scripting = struct {
         self.lua.deinit();
     }
 
+    pub fn addFnToTable(self: *Scripting, l: *Lua, engine_ptr: *Engine, table_name: [:0]const u8, func_name: [:0]const u8, func: CFn) void {
+        _ = self;
+        const table: zlua.LuaType = l.getGlobal(table_name) catch .nil;
+        if (table == .nil) {
+            l.pop(1);
+            l.newTable();
+            l.pushValue(-1);
+            l.setGlobal(table_name);
+        }
+        l.pushLightUserdata(engine_ptr);
+        l.pushClosure(func, 1);
+        l.setField(-2, func_name);
+        l.pop(1);
+    }
+
+    // Add a function to the Engine Table
+    pub fn addEngineFunc(self: *Scripting, l: *Lua, ptr: *Engine, name: [:0]const u8, func: CFn) void {
+        _ = self;
+        const table: zlua.LuaType = l.getGlobal("Engine") catch .nil;
+        if (table == .nil) {
+            l.pop(1);
+            l.newTable();
+            l.pushValue(-1);
+            l.setGlobal("Engine");
+        }
+        l.pushLightUserdata(ptr);
+        l.pushClosure(func, 1);
+        l.setField(-2, name);
+        l.pop(1);
+    }
+
     pub fn setupBindings(self: *Scripting, engine_ptr: *Engine) !void {
-        self.lua.newTable();
-
-        const addEngineFunc = struct {
-            fn add(l: *Lua, ptr: *Engine, name: [:0]const u8, func: CFn) !void {
-                l.pushLightUserdata(ptr);
-                l.pushClosure(func, 1);
-                l.setField(-2, name);
-            }
-        }.add;
-
-        // try addEngineFunc(self.lua, engine_ptr, "draw_texture", zlua.wrap(draw_texture));
-        // try addEngineFunc(self.lua, engine_ptr, "get_texture_width", zlua.wrap(get_texture_width));
-        // try addEngineFunc(self.lua, engine_ptr, "get_texture_height", zlua.wrap(get_texture_height));
-        // try addEngineFunc(self.lua, engine_ptr, "draw_circle", zlua.wrap(draw_circle));
-        // try addEngineFunc(self.lua, engine_ptr, "draw_rect", zlua.wrap(draw_rectangle));
-        // try addEngineFunc(self.lua, engine_ptr, "draw_text", zlua.wrap(draw_text));
-        try addEngineFunc(self.lua, engine_ptr, "log", zlua.wrap(log));
-        // try addEngineFunc(self.lua, engine_ptr, "get_screen_width", zlua.wrap(getScreenWidth));
-        // try addEngineFunc(self.lua, engine_ptr, "get_screen_height", zlua.wrap(getScreenHeight));
-        // try addEngineFunc(self.lua, engine_ptr, "get_frame_time", zlua.wrap(getFrameTime));
-        // self.lua.setGlobal("Engine");
-        //
-        // self.lua.newTable();
-        // const addGlobalFunc = struct {
-        //     fn add(l: *Lua, name: [:0]const u8, func: CFn) !void {
-        //         l.pushFunction(func);
-        //         l.setField(-2, name);
-        //     }
-        // }.add;
-        //
-        // try addGlobalFunc(self.lua, "is_key_down", zlua.wrap(is_key_down));
-        // try addGlobalFunc(self.lua, "is_key_pressed", zlua.wrap(is_key_pressed));
-        // self.lua.setGlobal("Input");
-        //
-        // // Setup the Rectangle Metatable and the Rect Global Table
-        // try self.lua.newMetatable(RectangleMetatableName);
-        // try addGlobalFunc(self.lua, "__index", zlua.wrap(rect_index));
-        // try addGlobalFunc(self.lua, "__newindex", zlua.wrap(rect_newindex));
-        // self.lua.pop(1);
-        //
-        // self.lua.newTable();
-        // try addGlobalFunc(self.lua, "new", zlua.wrap(rect_new));
-        // try addGlobalFunc(self.lua, "check_collision", zlua.wrap(check_collision_recs));
-        // self.lua.setGlobal("Rect");
+        // self.addEngineFunc(self.lua, engine_ptr, "log", zlua.wrap(log));
+        // self.addFnToTable(self.lua, engine_ptr, "Engine", "log", zlua.wrap(log));
+        for (FN_ENTRIES) |fe| {
+            self.addFnToTable(self.lua, engine_ptr, fe.table, fe.name, fe.func);
+        }
     }
 
     pub fn doString(self: *Scripting, code: []const u8) !void {

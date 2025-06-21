@@ -1,6 +1,7 @@
 -- The _init function is called once when the game starts
 function _init()
     print("Lua: _init() called. Game is starting up!")
+    Engine.log("\nLOG FUNCTION IS WORKING!\n")
 
 end
 

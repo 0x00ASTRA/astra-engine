@@ -60,13 +60,9 @@ pub const Engine = struct {
 
         try engine.scripting.setupBindings(engine);
 
-        try engine.scripting.doFile("scripts/engine/init.lua"); // catch |err| {
-        //     std.debug.print("Failed to load Lua File 'scripts/engine/init.lua' with error: {}", .{err});
-        // };
+        try engine.scripting.doFile("scripts/engine/init.lua");
 
-        try engine.scripting.doFile("scripts/game/main.lua"); // catch |err| {
-        //     std.debug.print("Engine.init: Failed to load Lua File 'scripts/game/main.lua' with error: {}", .{err});
-        // };
+        try engine.scripting.doFile("scripts/game/main.lua");
 
         return engine;
     }
