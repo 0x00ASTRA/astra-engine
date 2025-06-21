@@ -1,66 +1,101 @@
 const std = @import("std");
-const rl = @import("raylib");
+const sdl = @import("sdl2");
+
+pub const AssetType = union(enum) {
+    pub const ImageAsset = struct { surface: sdl.Surface, num_users: usize };
+    pub const TextureAsset = struct { texture: sdl.Texture, num_users: usize };
+
+    image: ImageAsset,
+    textture: TextureAsset,
+};
 
 pub const AssetManager = struct {
+    const Self = @This();
     allocator: std.mem.Allocator,
-    textures: std.StringHashMap(rl.Texture2D),
+    texture_pool: std.StringHashMap(AssetType.TextureAsset),
+    image_pool: std.StringHashMap(AssetType.ImageAsset),
+    mutex: std.Thread.Mutex,
 
-    pub fn init(allocator: std.mem.Allocator) !AssetManager {
-        const t = std.StringHashMap(rl.Texture2D).init(allocator);
-        var asset_manager = AssetManager{
+    pub fn init(allocator: std.mem.Allocator) !Self {
+        const t = std.StringHashMap(AssetType.TextureAsset).init(allocator);
+        const i = std.StringHashMap(AssetType.ImageAsset).init(allocator);
+        const asset_manager = Self{
             .allocator = allocator,
-            .textures = t,
+            .texture_pool = t,
+            .image_pool = i,
+            .mutex = std.Thread.Mutex{},
         };
-        try asset_manager.loadTexturesFromDir("assets/textures/");
         return asset_manager;
     }
 
-    pub fn deinit(self: *AssetManager) void {
-        var texture_iter = self.textures.valueIterator();
-        while (texture_iter.next()) |tex| {
-            rl.unloadTexture(tex.*);
+    pub fn deinit(self: *Self) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        var texture_iter = self.texture_pool.iterator();
+        while (texture_iter.next()) |iter| {
+            self.allocator.free(iter.key_ptr.*);
+            iter.value_ptr.texture.destroy();
         }
-        self.textures.deinit();
+        self.texture_pool.deinit();
+
+        var image_iter = self.image_pool.iterator();
+        while (image_iter.next()) |iter| {
+            self.allocator.free(iter.key_ptr.*);
+            iter.value_ptr.surface.destroy();
+        }
+        self.image_pool.deinit();
     }
 
-    fn loadTexturesFromDir(self: *AssetManager, path: [:0]const u8) !void {
-        var textures_dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-        defer textures_dir.close();
+    pub fn loadImage(self: *Self, filename: [:0]const u8) !sdl.Surface {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.image_pool.get(filename)) |i| {
+            i.num_users += 1;
+            return i.surface;
+        }
 
-        var iter = textures_dir.iterate();
-        while (try iter.next()) |f| {
-            if (f.kind == .file) {
-                const full_path_str = try std.fmt.allocPrintZ(self.allocator, "{s}{s}", .{ path, f.name });
-                defer self.allocator.free(full_path_str);
+        const img = try sdl.image.loadSurface(filename);
+        try self.image_pool.put(self.allocator.dupeZ(u8, filename), .{ .surface = img, .num_users = 1 });
+        return img;
+    }
 
-                const texture = blk: {
-                    if (rl.loadTexture(full_path_str)) |loaded_texture| {
-                        break :blk loaded_texture;
-                    } else |err| {
-                        std.debug.print("Failed to load texture: {s} with error '{s}'\n", .{ f.name, @errorName(err) });
-
-                        const error_msg_buf = try std.fmt.allocPrintZ(self.allocator, "ERROR: {s}", .{f.name});
-                        defer self.allocator.free(error_msg_buf);
-
-                        const error_image = rl.genImageText(20, 20, error_msg_buf);
-                        defer rl.unloadImage(error_image);
-
-                        break :blk try rl.loadTextureFromImage(error_image);
-                    }
-                };
-                const name = try self.allocator.dupe(u8, f.name);
-                try self.textures.put(name, texture);
-                std.debug.print("Loaded Texture: {s}\n", .{f.name});
+    pub fn unloadImage(self: *Self, filename: [:0]const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.image_pool.get(filename)) |i| {
+            i.num_users -= 1;
+            if (i.num_users < 1) {
+                i.surface.destroy();
+                self.image_pool.remove(filename);
             }
+        } else {
+            return error.InvalidFileName;
         }
-        std.debug.print("\x1b[32m[ DONE ]\x1b[0m Finished Loading Textures.\n", .{});
     }
 
-    pub fn getTexture(self: *AssetManager, name: [:0]const u8) ?rl.Texture2D {
-        if (self.textures.get(name)) |t| {
-            return t;
+    pub fn loadTexture(self: *Self, renderer: sdl.Renderer, filename: [:0]const u8) !sdl.Texture {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.texture_pool.get(filename)) |t| {
+            t.num_users += 1;
+            return t.texture;
+        }
+        const texture = try sdl.image.loadTexture(renderer, filename);
+        try self.texture_pool.put(self.allocator.dupeZ(u8, filename), .{ .texture = texture, .num_users = 1 });
+        return texture;
+    }
+
+    pub fn unloadTexture(self: *Self, filename: [:0]const u8) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.texture_pool.get(filename)) |t| {
+            t.num_users -= 1;
+            if (t.num_users < 1) {
+                t.texture.destroy();
+                self.texture_pool.remove(filename);
+            }
         } else {
-            return null;
+            return error.InvalidTextureName;
         }
     }
 };

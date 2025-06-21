@@ -1,4 +1,5 @@
 const std = @import("std");
+const sdl = @import("sdl");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -11,6 +12,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    const sdk = sdl.init(b, .{});
+    sdk.link(exe, .dynamic, sdl.Library.SDL2);
+    exe.root_module.addImport("sdl2", sdk.getWrapperModule());
 
     // ########[ Raylib Dependency ]########
     const raylib_dep = b.dependency("raylib_zig", .{

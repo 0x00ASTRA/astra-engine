@@ -1,26 +1,54 @@
 const std = @import("std");
 const zlua = @import("zlua");
+const toml = @import("toml");
+const sdl = @import("sdl2");
 const Lua = zlua.Lua;
 const CallArgs = zlua.Lua.ProtectedCallArgs;
 const render = @import("renderer.zig");
 const rl = @import("raylib");
 const scripting = @import("scripting.zig");
 const asset_manager = @import("asset_manager.zig");
+const window_manager = @import("window_manager.zig");
+const renderer_manager = @import("renderer_manager.zig");
+
+const SDL_DEFAULT_INIT_FLAGS: sdl.InitFlags = .{
+    .audio = true,
+    .events = true,
+    .video = true,
+    .game_controller = true,
+};
+
+const DEFAULT_WINDOW_CFG: window_manager.WindowConfig = .{ .title = "Main Window", .x = .{ .centered = {} }, .y = .{ .centered = {} }, .width = 1000, .height = 1000, .flags = .{ .borderless = true } };
 
 pub const Engine = struct {
     allocator: std.mem.Allocator,
     scripting: *scripting.Scripting,
-    renderer: *render.Renderer,
+    window_manager: *window_manager.WindowManager,
+    renderer_manager: *renderer_manager.RendererManager,
     asset_manager: *asset_manager.AssetManager,
+    main_window_id: []const u8,
+    main_renderer_id: []const u8,
 
     pub fn init(allocator: std.mem.Allocator) !*Engine {
         var engine = try allocator.create(Engine);
 
         engine.allocator = allocator;
 
-        const r = try allocator.create(render.Renderer);
-        r.* = try render.Renderer.init(allocator, "config/window.toml");
-        engine.renderer = r;
+        try sdl.init(SDL_DEFAULT_INIT_FLAGS);
+
+        const wm = try allocator.create(window_manager.WindowManager);
+        wm.* = try window_manager.WindowManager.init(allocator);
+        engine.window_manager = wm;
+
+        const rm = try allocator.create(renderer_manager.RendererManager);
+        rm.* = try renderer_manager.RendererManager.init(allocator);
+        engine.renderer_manager = rm;
+
+        const main_win_id = try engine.window_manager.spawnWindow(DEFAULT_WINDOW_CFG);
+        engine.main_window_id = try allocator.dupe(u8, main_win_id);
+        const main_win = try engine.window_manager.getWindow(main_win_id);
+        const main_ren_id = try engine.renderer_manager.createRenderer(main_win, null, .{ .accelerated = true });
+        engine.main_renderer_id = try allocator.dupe(u8, main_ren_id);
 
         const am = try allocator.create(asset_manager.AssetManager);
         am.* = try asset_manager.AssetManager.init(allocator);
@@ -45,13 +73,20 @@ pub const Engine = struct {
 
     pub fn deinit(self: *Engine) void {
         self.scripting.deinit();
+        self.allocator.free(self.main_renderer_id);
+        self.allocator.free(self.main_window_id);
         self.allocator.destroy(self.scripting);
 
         self.asset_manager.deinit();
         self.allocator.destroy(self.asset_manager);
 
-        self.renderer.deinit();
-        self.allocator.destroy(self.renderer);
+        self.renderer_manager.deinit();
+        self.allocator.destroy(self.renderer_manager);
+
+        self.window_manager.deinit();
+        self.allocator.destroy(self.window_manager);
+
+        sdl.quit();
 
         self.allocator.destroy(self);
     }
@@ -78,7 +113,18 @@ pub const Engine = struct {
         }
 
         // --- Main game loop ---
-        while (!self.shouldClose()) {
+        mainloop: while (true) {
+            while (sdl.pollEvent()) |ev| {
+                switch (ev) {
+                    .quit => {
+                        break :mainloop;
+                    },
+                    .window => |w| {
+                        try self.window_manager.processWindowEvent(w);
+                    },
+                    else => {},
+                }
+            }
             const update_get_result = self.scripting.lua.getGlobal("_update");
             if (update_get_result) |update_value| {
                 if (update_value == .function) {
@@ -103,7 +149,7 @@ pub const Engine = struct {
                 std.debug.print("Warning: Failed to retrieve Lua global '_draw': {s}. Nothing will be drawn.\n", .{@errorName(err)});
             }
 
-            self.renderer.present();
+            self.renderer_manager.presentAll();
         }
     }
 };
