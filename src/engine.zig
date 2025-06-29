@@ -145,7 +145,7 @@ pub const Engine = struct {
                 std.debug.print("Warning: Failed to retrieve Lua global '_draw': {s}. Nothing will be drawn.\n", .{@errorName(err)});
             }
 
-            self.renderer_manager.presentAll();
+            try self.renderer_manager.presentAll();
         }
     }
 };

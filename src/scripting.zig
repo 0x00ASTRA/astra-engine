@@ -1,6 +1,7 @@
 /// This file contains the source code for the Scripting Object within the engine. It provide a central source to interact with the lua scripting backend.
 const std = @import("std");
 const zlua = @import("zlua");
+const sdl = @import("sdl2");
 const Lua = zlua.Lua;
 const CallArgs = zlua.Lua.ProtectedCallArgs;
 const LuaState = zlua.LuaState;
@@ -26,8 +27,77 @@ fn log(lua: *Lua) c_int {
     std.debug.print("\x1b[34m[Lua Log]: {s}\x1b[0m\n", .{msg});
     return 0;
 }
+
+fn getEngine(lua: *Lua) !*Engine {
+    return lua.toUserdata(Engine, Lua.upvalueIndex(1));
+}
+
+const EngineTypes = @import("engine_types.zig");
+const Vec2 = EngineTypes.Vec2;
+
+// fn create_window() c_int {}
+
+fn get_main_window_id(lua: *Lua) c_int {
+    const engine = getEngine(lua) catch |err| {
+        std.debug.print("\x1b[91mget_main_window_id error:\x1b[0m could not get engine pointer: {s}\n", .{@errorName(err)});
+        return 0;
+    };
+    _ = lua.pushString(engine.main_window_id);
+    std.debug.print("\x1b[96mPushed:\x1b[0m {s}\n", .{engine.main_window_id});
+    return 1;
+}
+
+fn draw_circle(lua: *Lua) c_int {
+    // window_id, x, y, radius, r, g, b, a
+    const engine = getEngine(lua) catch |err| {
+        std.debug.print("\x1b[91mdraw_circle error:\x1b[0m could not get engine pointer: {s}\n", .{@errorName(err)});
+        return 0;
+    };
+
+    const num_args = lua.getTop();
+    if (num_args < 9) {
+        std.debug.print("\x1b[91mdraw_circle error:\x1b[0m 9 arguments required, recieved {d}.\n", .{num_args});
+        return 0;
+    }
+
+    var window_id: []const u8 = lua.toString(1) catch {
+        std.debug.print("\x1b[91mdraw_circle error:\x1b[0m Expected string for param 'window_id'\n", .{});
+        return 0;
+    };
+
+    _ = engine.window_manager.getWindow(window_id) catch {
+        std.debug.print("\x1b[91mdraw_circle error:\x1b[0m Failed to find window with id: {s}\n", .{window_id});
+        std.debug.print("\x1b[93mdraw_circle warning:\x1b[0m Defaulting to main window with id: '{s}'\n", .{engine.main_window_id});
+        window_id = engine.main_window_id;
+    };
+
+    const x: f32 = @as(f32, @floatCast(lua.toNumber(2) catch 0));
+    const y: f32 = @as(f32, @floatCast(lua.toNumber(3) catch 0));
+    const rad: f32 = @as(f32, @floatCast(lua.toNumber(4) catch 0));
+    const r: u8 = @as(u8, @intFromFloat(lua.toNumber(5) catch 255));
+    const g: u8 = @as(u8, @intFromFloat(lua.toNumber(6) catch 255));
+    const b: u8 = @as(u8, @intFromFloat(lua.toNumber(7) catch 255));
+    const a: u8 = @as(u8, @intFromFloat(lua.toNumber(8) catch 255));
+    const filled: bool = lua.toBoolean(9);
+
+    _ = engine.renderer_manager.getRenderer(window_id) catch {
+        std.debug.print("\x1b[91mdraw_circle error:\x1b[0m Failed to get renderer with id: '{s}'. Unable to draw circle.\n", .{window_id});
+        return 0;
+    };
+
+    const pos: Vec2 = Vec2{ .x = x, .y = y };
+    const col: sdl.Color = sdl.Color{ .r = r, .g = g, .b = b, .a = a };
+    engine.renderer_manager.queue(window_id, .{ .two_dimensional = .{ .circle = .{ .position = pos, .radius = rad, .color = col, .filled = filled } } }) catch {
+        std.debug.print("\x1b[91mdraw_circle error:\x1b[0m Failed to queue drawable in renderer with id: {s}", .{window_id});
+        return 0;
+    };
+    return 0;
+}
+
 const FN_ENTRIES = [_]FnEntry{
     .{ .table = "Engine", .name = "log", .func = zlua.wrap(log) }, // MUST USE WRAP ON Fn's
+    .{ .table = "Engine", .name = "get_main_window_id", .func = zlua.wrap(get_main_window_id) },
+    .{ .table = "Render", .name = "draw_circle", .func = zlua.wrap(draw_circle) },
 };
 // END JUST FOR TESTING
 
