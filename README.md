@@ -146,7 +146,7 @@ Contributions are welcome! If you find a bug or have an idea for an improvement,
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
 ---
 
