@@ -137,7 +137,6 @@ pub const Engine = struct {
                 std.debug.print("Lua Logic Thread Warning: Failed to retrieve Lua global '_draw': {s}. Nothing will be queued for drawing.\n", .{@errorName(err)});
             }
 
-            // Optional: Add a small sleep or fixed tick rate to prevent busy-waiting
             std.Thread.sleep(1_000_000 / 120); // Sleep for 1/120th of a second
         }
         std.debug.print("Lua Logic Thread: Exiting.\n", .{});
