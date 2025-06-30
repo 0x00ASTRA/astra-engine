@@ -9,12 +9,9 @@
 *   [ ] **Event System:** Implement a dedicated event queue thread for handling all engine and game events asynchronously.
 
 ### Rendering (2D)
-*   [ ] **Shapes & Primitives:** Add support for rendering basic geometric shapes (rectangles, lines, etc.).
 *   [ ] **Sprite Batching:** Implement a sprite batching system to improve rendering performance.
-*   [ ] **Camera System:** Implement a camera system for 2D scrolling, zooming, and rotation.
 *   [ ] **Lighting:** Design and implement a 2D lighting system (e.g., normal-mapped 2D lighting).
 *   [ ] **Shaders:** Integrate a shader system for custom rendering effects and post-processing.
-*   [ ] **Text Rendering:** Implement a system for managing fonts and rendering text.
 
 ### Scripting
 *   [ ] **Modularization:** Refactor the scripting system into its own module with a clear entry point, bindings, and tests.
@@ -22,16 +19,10 @@
 *   [ ] **Hot-Reloading:** Add support for hot-reloading Lua scripts to accelerate development.
 
 ### Input
-*   [ ] **Input Handling:** Create a flexible input handling system that maps physical inputs to game actions.
 *   [ ] **Device Support:** Add support for various input devices (keyboard, mouse, game controllers).
-
-### Physics & Collision (2D)
-*   [ ] **Collision System:** Implement a 2D collision detection and resolution system (e.g., AABB, SAT).
-*   [ ] **Physics Engine:** Integrate or build a simple 2D physics engine for movement and forces.
 
 ### Asset Management
 *   [ ] **Performance:** Refactor the asset manager for high performance and optimized memory usage.
-*   [ ] **Audio:** Add support for loading and playing audio files (e.g., WAV, OGG).
 
 ### 3D (Future)
 *   [ ] **Renderer Extension:** Extend the renderer to support 3D models, materials, and transformations.
@@ -45,6 +36,15 @@
 *   **[WIP]** Refine the SDL2 rendering manager to support more advanced features.
 *   **[WIP]** Redesign the Lua API for better ergonomics and type safety.
 *   **[WIP]** Implement a basic event system for engine-to-script communication.
+*   **[WIP]** Implement rect drawing (filled and outlined) in `renderer_manager.zig`.
+*   **[WIP]** Implement texture drawing in `renderer_manager.zig`.
+*   **[WIP]** Implement text rendering in `renderer_manager.zig`.
+*   **[WIP]** Implement FPS counter display in `renderer_manager.zig`.
+*   **[WIP]** Implement a 2D camera system.
+*   **[WIP]** Implement a basic 2D collision detection system (e.g., AABB).
+*   **[WIP]** Implement a simple 2D physics engine (gravity, velocity).
+*   **[WIP]** Create a flexible input handling system for game actions.
+*   **[WIP]** Add support for loading and playing audio files.
 
 ---
 
