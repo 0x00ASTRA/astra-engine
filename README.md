@@ -131,6 +131,9 @@ To initiate the Gemini workflow, you can use the following build command:
 zig build gemini
 ```
 
+> [!NOTE]
+> This command requires the [`gemini-cli`](https://github.com/google/gemini-cli) to be installed and available in your system's PATH.
+
 This command will trigger the agent to analyze the current state of the project and update the planning documents accordingly. The agent **will not** modify any source code.
 
 ---
