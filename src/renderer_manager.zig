@@ -96,7 +96,36 @@ pub const Drawable2D = union(enum) {
             try renderer.drawPoints(points);
         }
     },
-    rect: struct { position: Vec2, width: i32, height: i32, color: sdl.Color },
+    rect: struct {
+        position: Vec2,
+        width: i32,
+        height: i32,
+        color: sdl.Color,
+        filled: bool,
+        pub fn draw(self: *const @This(), renderer: sdl.Renderer) !void {
+            const init_col = try renderer.getColor();
+            try renderer.setColor(self.color);
+            if (self.filled) {
+                try renderer.fillRect(sdl.Rectangle{ .width = self.width, .height = self.height, .x = @as(i32, @intFromFloat(self.position.x)), .y = @as(i32, @intFromFloat(self.position.y)) });
+                try renderer.setColor(init_col);
+                return;
+            }
+            // const x1: i32 = @as(i32, @intFromFloat(self.position.x));
+            // const y1: i32 = @as(i32, @intFromFloat(self.position.x));
+            // const x2: i32 = x1 + self.width;
+            // const y2: i32 = y1 + self.height;
+            // const points = [_]sdl.Point{
+            //     .{ .x = x1, .y = y1 }, // Top-left
+            //     .{ .x = x2, .y = y1 }, // Top-right
+            //     .{ .x = x2, .y = y2 }, // Bottom-right
+            //     .{ .x = x1, .y = y2 }, // Bottom-left
+            //     .{ .x = x1, .y = y1 }, // Close the rectangle by returning to Top-left
+            // };
+            // try renderer.drawLines(&points);
+            try renderer.drawRect(sdl.Rectangle{ .width = self.width, .height = self.height, .x = @as(i32, @intFromFloat(self.position.x)), .y = @as(i32, @intFromFloat(self.position.y)) });
+            try renderer.setColor(init_col);
+        }
+    },
     text: struct { message: [:0]const u8, position: Vec2, size: i32, color: sdl.Color },
     texture: struct { texture: sdl.Texture, position: Vec2, rotation: f32, scale: f32, tint: sdl.Color },
     fps: struct { position: Vec2 },
@@ -194,7 +223,7 @@ pub const RendererManager = struct {
                                 try c.draw(self.allocator, ren);
                             },
                             .rect => |r| {
-                                _ = r;
+                                try r.draw(ren);
                             },
                             .text => |t| {
                                 _ = t;

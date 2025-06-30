@@ -1,8 +1,11 @@
 -- The _init function is called once when the game starts
 local win_id = Engine.get_main_window_id()
-local x = 0
-local y = 0
-local forward = false
+
+local cx = 200
+local cy = 200
+
+local rx = 600
+local ry = 600
 
 function _init()
     print("Lua: _init() called. Game is starting up!")
@@ -16,21 +19,12 @@ end
 
 -- The _draw function is called every frame for rendering
 function _draw()
-    Render.draw_circle(win_id, x, y, 30, 255, 0, 0, 255, true)
+    Render.draw_circle(win_id, cx, cy, 30, 255, 0, 0, 255, true)
+    Render.draw_circle(win_id, cx, cy, 30, 0, 255, 0, 255, false)
+
+    Render.draw_rect(win_id, rx, ry, 100, 100, 0, 255, 0, 255, true)
+    Render.draw_rect(win_id, rx, ry, 100, 100, 255, 0, 0, 255, false)
 end
 
 function _update()
-    if (forward) then
-        x = x + 1
-        y =  y + 1
-        if (x > 1000) then
-            forward = false
-        end
-    else
-        x = x - 1
-        y = y - 1
-        if (x < 0) then
-            forward = true
-        end
-    end
 end
