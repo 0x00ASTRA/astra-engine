@@ -113,6 +113,28 @@ Engine and window settings are configured in `config/window.toml`.
 
 ---
 
+## 🤖 AI-Assisted Development
+
+This project uses a **Gemini AI agent** for project management and planning. The agent's purpose is to help organize the development process, track tasks, and maintain a clear roadmap.
+
+### The Gemini Workflow
+
+The core of the AI-assisted workflow is defined in the `GEMINI.md` file. The agent has read-only access to the source code and can only write to the planning documents located in the `development/` directory:
+
+*   `development/ROADMAP.md`: Long-term goals and feature milestones.
+*   `development/TASKS.md`: Individual tasks (backlog, in-progress, done).
+*   `development/DECISIONS.md`: A log of important technical decisions.
+
+To initiate the Gemini workflow, you can use the following build command:
+
+```bash
+zig build gemini
+```
+
+This command will trigger the agent to analyze the current state of the project and update the planning documents accordingly. The agent **will not** modify any source code.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! If you find a bug or have an idea for an improvement, please open an issue or submit a pull request.
