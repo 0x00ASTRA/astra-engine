@@ -92,7 +92,7 @@ pub const Drawable2D = union(enum) {
                 return;
             }
             const points = try self.genPoints(allocator);
-            allocator.free(points);
+            defer allocator.free(points);
             try renderer.drawPoints(points);
         }
     },
@@ -111,15 +111,17 @@ pub const Drawable = union(enum) {
     three_dimensional: Drawable3D,
 };
 
+pub const RenderQueueData = struct { entries: std.ArrayList(Drawable), mutex: std.Thread.Mutex };
+
 pub const RendererManager = struct {
     const Self = @This();
     allocator: std.mem.Allocator,
     renderers: std.StringHashMap(sdl.Renderer),
-    render_queues: std.StringHashMap(std.ArrayList(Drawable)),
+    render_queues: std.StringHashMap(RenderQueueData),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const renderers_map = std.StringHashMap(sdl.Renderer).init(allocator);
-        const renderer_queues = std.StringHashMap(std.ArrayList(Drawable)).init(allocator);
+        const renderer_queues = std.StringHashMap(RenderQueueData).init(allocator);
         const ren = RendererManager{ .allocator = allocator, .renderers = renderers_map, .render_queues = renderer_queues };
         return ren;
     }
@@ -143,7 +145,7 @@ pub const RendererManager = struct {
             return error.WindowOccupied;
         }
         try self.renderers.put(try self.allocator.dupe(u8, ren_id), ren);
-        try self.render_queues.put(try self.allocator.dupe(u8, ren_id), std.ArrayList(Drawable).init(self.allocator));
+        try self.render_queues.put(try self.allocator.dupe(u8, ren_id), RenderQueueData{ .entries = std.ArrayList(Drawable).init(self.allocator), .mutex = std.Thread.Mutex{} });
         return try self.allocator.dupe(u8, ren_id);
     }
 
@@ -165,15 +167,26 @@ pub const RendererManager = struct {
     pub fn queue(self: *Self, renderer_id: []const u8, drawable: Drawable) !void {
         const ren_queue = self.render_queues.getPtr(renderer_id);
         if (ren_queue) |ren| {
-            try ren.append(drawable);
+            ren.mutex.lock();
+            defer ren.mutex.unlock();
+            try ren.entries.append(drawable);
         }
     }
 
     fn consume_queue(self: *Self, renderer_id: []const u8) !void {
         const ren: sdl.Renderer = try self.getRenderer(renderer_id);
         if (self.render_queues.getPtr(renderer_id)) |rq| {
-            for (rq.items) |item| {
-                std.debug.print("\x1b[94mnum items:\x1b[0m {d}\n", .{rq.items.len});
+            var entries = std.ArrayList(Drawable).init(self.allocator);
+            defer entries.deinit();
+
+            rq.mutex.lock();
+            errdefer rq.mutex.unlock();
+
+            try entries.appendSlice(rq.entries.items);
+            rq.entries.clearRetainingCapacity();
+            rq.mutex.unlock();
+
+            for (entries.items) |item| {
                 switch (item) {
                     .two_dimensional => |s| {
                         switch (s) {
@@ -199,8 +212,8 @@ pub const RendererManager = struct {
                     },
                 }
             }
-            rq.deinit();
-            try self.render_queues.put(renderer_id, std.ArrayList(Drawable).init(self.allocator));
+        } else {
+            return error.InvalidRendererId;
         }
     }
 
@@ -208,6 +221,7 @@ pub const RendererManager = struct {
         const ren: sdl.Renderer = self.renderers.get(renderer_id);
         try ren.setColor(0, 0, 0, 255);
         try ren.clear();
+
         try self.consume_queue(renderer_id);
         ren.present();
     }

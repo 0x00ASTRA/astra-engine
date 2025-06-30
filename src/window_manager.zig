@@ -1,6 +1,7 @@
 const std = @import("std");
 const sdl = @import("sdl2");
 const toml = @import("toml");
+const Vec2 = @import("engine_types.zig").Vec2;
 
 pub const WindowConfig = struct { title: []const u8, x: sdl.WindowPosition, y: sdl.WindowPosition, width: usize, height: usize, flags: sdl.WindowFlags };
 
@@ -47,6 +48,12 @@ pub const WindowManager = struct {
         } else {
             return error.InvalidWindowId;
         }
+    }
+
+    pub fn getWindowDimensions(self: *Self, window_id: []const u8) !Vec2 {
+        const win: sdl.Window = try self.getWindow(window_id);
+        const size = win.getSize();
+        return Vec2{ .x = @floatFromInt(size.width), .y = @floatFromInt(size.height) };
     }
 
     pub fn destroyWindow(self: *Self, window_id: []const u8) !void {

@@ -8,7 +8,9 @@ function _init()
     print("Lua: _init() called. Game is starting up!")
     Engine.log("\nLOG FUNCTION IS WORKING!\n")
     Engine.log(string.format("%s", win_id))
+    local w,h = Engine.get_window_dimensions(win_id)
 
+    Engine.log(string.format("%d,%d", w,h))
 end
 
 
@@ -21,7 +23,7 @@ function _update()
     if (forward) then
         x = x + 1
         y =  y + 1
-        if (x > 800) then
+        if (x > 1000) then
             forward = false
         end
     else

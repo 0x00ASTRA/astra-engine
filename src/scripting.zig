@@ -7,7 +7,6 @@ const CallArgs = zlua.Lua.ProtectedCallArgs;
 const LuaState = zlua.LuaState;
 const rl = @import("raylib");
 const Engine = @import("engine.zig").Engine;
-const Drawable = @import("renderer.zig").Drawable;
 pub const CFn = *const fn (state: ?*LuaState) callconv(.C) c_int;
 const event_system = @import("event_system.zig");
 const Event = event_system.Event;
@@ -45,6 +44,29 @@ fn get_main_window_id(lua: *Lua) c_int {
     _ = lua.pushString(engine.main_window_id);
     std.debug.print("\x1b[96mPushed:\x1b[0m {s}\n", .{engine.main_window_id});
     return 1;
+}
+
+fn get_window_dimensions(lua: *Lua) c_int {
+    const engine = getEngine(lua) catch |err| {
+        std.debug.print("\x1b[91mget_window_dimensions error:\x1b[0m could not get engine pointer: {s}\n", .{@errorName(err)});
+        return 0;
+    };
+
+    const num_args = lua.getTop();
+    if (num_args < 1) {
+        std.debug.print("\x1b[91mget_window_dimensions error:\x1b[0m 1 argument required, recieved {d}.\n", .{num_args});
+        return 0;
+    }
+
+    const window_id: []const u8 = lua.toString(1) catch {
+        std.debug.print("\x1b[91mget_window_dimensions error:\x1b[0m Expected string for param 'window_id'\n", .{});
+        return 0;
+    };
+
+    const dims = engine.window_manager.getWindowDimensions(window_id) catch Vec2{ .x = 0, .y = 0 };
+    _ = lua.pushNumber(dims.x);
+    _ = lua.pushNumber(dims.y);
+    return 2;
 }
 
 fn draw_circle(lua: *Lua) c_int {
@@ -97,6 +119,7 @@ fn draw_circle(lua: *Lua) c_int {
 const FN_ENTRIES = [_]FnEntry{
     .{ .table = "Engine", .name = "log", .func = zlua.wrap(log) }, // MUST USE WRAP ON Fn's
     .{ .table = "Engine", .name = "get_main_window_id", .func = zlua.wrap(get_main_window_id) },
+    .{ .table = "Engine", .name = "get_window_dimensions", .func = zlua.wrap(get_window_dimensions) },
     .{ .table = "Render", .name = "draw_circle", .func = zlua.wrap(draw_circle) },
 };
 // END JUST FOR TESTING

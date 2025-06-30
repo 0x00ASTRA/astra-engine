@@ -4,8 +4,6 @@ const toml = @import("toml");
 const sdl = @import("sdl2");
 const Lua = zlua.Lua;
 const CallArgs = zlua.Lua.ProtectedCallArgs;
-const render = @import("renderer.zig");
-const rl = @import("raylib");
 const scripting = @import("scripting.zig");
 const asset_manager = @import("asset_manager.zig");
 const window_manager = @import("window_manager.zig");
@@ -29,9 +27,11 @@ pub const Engine = struct {
     main_window_id: []const u8,
     main_renderer_id: []const u8,
 
+    lua_logic_thread: std.Thread,
+    should_quit_lua_thread: std.atomic.Value(bool),
+
     pub fn init(allocator: std.mem.Allocator) !*Engine {
         var engine = try allocator.create(Engine);
-
         engine.allocator = allocator;
 
         try sdl.init(SDL_DEFAULT_INIT_FLAGS);
@@ -61,13 +61,19 @@ pub const Engine = struct {
         try engine.scripting.setupBindings(engine);
 
         try engine.scripting.doFile("scripts/engine/init.lua");
-
         try engine.scripting.doFile("scripts/game/main.lua");
+
+        engine.should_quit_lua_thread = std.atomic.Value(bool).init(false);
+
+        engine.lua_logic_thread = try std.Thread.spawn(.{}, luaLogicThreadFn, .{engine});
 
         return engine;
     }
 
     pub fn deinit(self: *Engine) void {
+        self.should_quit_lua_thread.store(true, .seq_cst);
+        self.lua_logic_thread.join();
+
         self.scripting.deinit();
         self.allocator.free(self.main_renderer_id);
         self.allocator.free(self.main_window_id);
@@ -89,31 +95,61 @@ pub const Engine = struct {
 
     pub fn shouldClose(self: *Engine) bool {
         _ = self;
-        return rl.windowShouldClose();
+        return false;
+    }
+
+    fn luaLogicThreadFn(engine: *Engine) !void {
+        const init_get_result = engine.scripting.lua.getGlobal("_init");
+        if (init_get_result) |init_value| {
+            if (init_value == .function) {
+                std.debug.print("\x1b[32mLua Logic Thread: _init function found.\x1b[0m\n", .{});
+                try engine.scripting.call(CallArgs{ .args = 0, .results = 0 });
+            } else {
+                engine.scripting.lua.pop(1);
+                std.debug.print("Lua Logic Thread Warning: _init() global found but is not a function (type: {}). Skipping call.\n", .{init_value});
+            }
+        } else |err| {
+            std.debug.print("Lua Logic Thread Warning: Failed to retrieve Lua global '_init': {s}. Skipping call.\n", .{@errorName(err)});
+        }
+
+        while (!engine.should_quit_lua_thread.load(.seq_cst)) {
+            const update_get_result = engine.scripting.lua.getGlobal("_update");
+            if (update_get_result) |update_value| {
+                if (update_value == .function) {
+                    _ = try engine.scripting.call(CallArgs{ .args = 0, .results = 0 });
+                } else {
+                    engine.scripting.lua.pop(1);
+                    std.debug.print("Lua Logic Thread Warning: _update() global found but is not a function (type: {}). Game logic might not be updated.\n", .{update_value});
+                }
+            } else |err| {
+                std.debug.print("Lua Logic Thread Warning: Failed to retrieve Lua global '_update': {s}. Game logic might not be updated.\n", .{@errorName(err)});
+            }
+
+            const draw_get_result = engine.scripting.lua.getGlobal("_draw");
+            if (draw_get_result) |draw_value| {
+                if (draw_value == .function) {
+                    _ = try engine.scripting.call(CallArgs{ .args = 0, .results = 0 });
+                } else {
+                    engine.scripting.lua.pop(1);
+                    std.debug.print("Lua Logic Thread Warning: _draw() global found but is not a function (type: {}). Nothing will be queued for drawing.\n", .{draw_value});
+                }
+            } else |err| {
+                std.debug.print("Lua Logic Thread Warning: Failed to retrieve Lua global '_draw': {s}. Nothing will be queued for drawing.\n", .{@errorName(err)});
+            }
+
+            // Optional: Add a small sleep or fixed tick rate to prevent busy-waiting
+            std.Thread.sleep(1_000_000 / 120); // Sleep for 1/120th of a second
+        }
+        std.debug.print("Lua Logic Thread: Exiting.\n", .{});
     }
 
     pub fn run(self: *Engine) !void {
-        // --- Attempt to get and call Lua's _init function ---
-        const init_get_result = self.scripting.lua.getGlobal("_init");
-        if (init_get_result) |init_value| {
-            if (init_value == .function) {
-                std.debug.print("\x1b[32m_init function found.\x1b[0m\n", .{});
-                try self.scripting.call(CallArgs{ .args = 0, .results = 0 });
-                std.debug.print("Call __init()\n", .{});
-            } else {
-                self.scripting.lua.pop(1);
-                std.debug.print("Warning: _init() global found but is not a function (type: {}). Skipping call.\n", .{init_value});
-            }
-        } else |err| {
-            std.debug.print("Warning: Failed to retrieve Lua global '_init': {s}. Skipping call.\n", .{@errorName(err)});
-        }
-
-        // --- Main game loop ---
-        mainloop: while (true) {
+        main_loop: while (true) {
             while (sdl.pollEvent()) |ev| {
                 switch (ev) {
                     .quit => {
-                        break :mainloop;
+                        self.should_quit_lua_thread.store(true, .seq_cst);
+                        break :main_loop;
                     },
                     .window => |w| {
                         try self.window_manager.processWindowEvent(w);
@@ -121,31 +157,9 @@ pub const Engine = struct {
                     else => {},
                 }
             }
-            const update_get_result = self.scripting.lua.getGlobal("_update");
-            if (update_get_result) |update_value| {
-                if (update_value == .function) {
-                    try self.scripting.call(CallArgs{ .args = 0, .results = 0 }); // Call _update()
-                } else {
-                    self.scripting.lua.pop(1); // Pop the non-function value
-                    std.debug.print("Warning: _update() global found but is not a function (type: {}). Game logic might not be updated.\n", .{update_value});
-                }
-            } else |err| {
-                std.debug.print("Warning: Failed to retrieve Lua global '_update': {s}. Game logic might not be updated.\n", .{@errorName(err)});
-            }
-
-            const draw_get_result = self.scripting.lua.getGlobal("_draw");
-            if (draw_get_result) |draw_value| {
-                if (draw_value == .function) {
-                    try self.scripting.call(CallArgs{ .args = 0, .results = 0 }); // Call _draw()
-                } else {
-                    self.scripting.lua.pop(1); // Pop the non-function value
-                    std.debug.print("Warning: _draw() global found but is not a function (type: {}). Nothing will be drawn.\n", .{draw_value});
-                }
-            } else |err| {
-                std.debug.print("Warning: Failed to retrieve Lua global '_draw': {s}. Nothing will be drawn.\n", .{@errorName(err)});
-            }
 
             try self.renderer_manager.presentAll();
         }
+        std.debug.print("Main Thread: Exiting main loop.\n", .{});
     }
 };
