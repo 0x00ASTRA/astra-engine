@@ -79,4 +79,11 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "run unit tests");
     test_step.dependOn(&run_test.step);
     test_step.dependOn(&b.addRunArtifact(unit_test).step);
+
+    // ########[ AI Workflow ]########
+    const run_gemini = b.addSystemCommand(&[_][]const u8{
+        "gemini",
+    });
+    const gemini_step = b.step("gemini", "run the Gemini AI project management workflow.");
+    gemini_step.dependOn(&run_gemini.step);
 }
