@@ -15,22 +15,9 @@ pub fn build(b: *std.Build) void {
 
     const sdk = sdl.init(b, .{});
     sdk.link(exe, .dynamic, sdl.Library.SDL2);
+    sdk.link(exe, .dynamic, sdl.Library.SDL2_ttf);
+    exe.linkSystemLibrary("sdl2_image");
     exe.root_module.addImport("sdl2", sdk.getWrapperModule());
-
-    // ########[ Raylib Dependency ]########
-    const raylib_dep = b.dependency("raylib_zig", .{
-        .target = target,
-        .optimize = optimize,
-        .shared = true,
-    });
-
-    const raylib = raylib_dep.module("raylib"); // main raylib module
-    const raygui = raylib_dep.module("raygui"); // raygui module
-    const raylib_artifact = raylib_dep.artifact("raylib"); // raylib C library
-
-    exe.linkLibrary(raylib_artifact);
-    exe.root_module.addImport("raylib", raylib);
-    exe.root_module.addImport("raygui", raygui);
 
     // ########[ Lua Dependency ]########
     const lua_dep = b.dependency("zlua", .{
@@ -50,7 +37,6 @@ pub fn build(b: *std.Build) void {
 
     // ########[ Install ]########
     b.installArtifact(exe);
-    b.installArtifact(raylib_artifact);
 
     // ########[ Run Step ]########
     const run_cmd = b.addRunArtifact(exe);
@@ -70,8 +56,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    unit_test.root_module.addImport("raylib", raylib);
-    unit_test.root_module.addImport("raygui", raygui);
     unit_test.root_module.addImport("toml", toml_dep.module("zig-toml"));
     unit_test.root_module.addImport("lua", lua_dep.module("zlua"));
 

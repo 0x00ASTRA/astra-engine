@@ -14,16 +14,19 @@ function _init()
     local w,h = Engine.get_window_dimensions(win_id)
 
     Engine.log(string.format("%d,%d", w,h))
+
 end
 
 
 -- The _draw function is called every frame for rendering
 function _draw()
-    Render.draw_circle(win_id, cx, cy, 30, 255, 0, 0, 255, true)
-    Render.draw_circle(win_id, cx, cy, 30, 0, 255, 0, 255, false)
-
-    Render.draw_rect(win_id, rx, ry, 100, 100, 0, 255, 0, 255, true)
-    Render.draw_rect(win_id, rx, ry, 100, 100, 255, 0, 0, 255, false)
+    -- Render.draw_circle(win_id, cx, cy, 30, 255, 0, 0, 255, true)
+    -- Render.draw_circle(win_id, cx, cy, 30, 0, 255, 0, 255, false)
+    --
+    -- Render.draw_rect(win_id, rx, ry, 100, 100, 0, 255, 0, 255, true)
+    -- Render.draw_rect(win_id, rx, ry, 100, 100, 255, 0, 0, 255, false)
+    Render.draw_texture(win_id, 500, 500, 0,0, "assets/textures/bird.png", 255,255,255,255)
+    Render.draw_text(win_id, 500, 500, "./assets/fonts/JetBrainsMono/JetBrainsMonoNerdFont-Regular.ttf", 24, 255, 255, 255, 255, "Hello World");
 end
 
 function _update()

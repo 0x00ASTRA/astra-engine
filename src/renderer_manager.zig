@@ -1,6 +1,7 @@
 const std = @import("std");
 const sdl = @import("sdl2");
 const EngineTypes = @import("engine_types.zig");
+const AssetManager = @import("asset_manager.zig").AssetManager;
 const Vec2 = EngineTypes.Vec2;
 const Vec3 = EngineTypes.Vec3;
 const Quat = EngineTypes.Quat;
@@ -110,24 +111,31 @@ pub const Drawable2D = union(enum) {
                 try renderer.setColor(init_col);
                 return;
             }
-            // const x1: i32 = @as(i32, @intFromFloat(self.position.x));
-            // const y1: i32 = @as(i32, @intFromFloat(self.position.x));
-            // const x2: i32 = x1 + self.width;
-            // const y2: i32 = y1 + self.height;
-            // const points = [_]sdl.Point{
-            //     .{ .x = x1, .y = y1 }, // Top-left
-            //     .{ .x = x2, .y = y1 }, // Top-right
-            //     .{ .x = x2, .y = y2 }, // Bottom-right
-            //     .{ .x = x1, .y = y2 }, // Bottom-left
-            //     .{ .x = x1, .y = y1 }, // Close the rectangle by returning to Top-left
-            // };
-            // try renderer.drawLines(&points);
             try renderer.drawRect(sdl.Rectangle{ .width = self.width, .height = self.height, .x = @as(i32, @intFromFloat(self.position.x)), .y = @as(i32, @intFromFloat(self.position.y)) });
             try renderer.setColor(init_col);
         }
     },
-    text: struct { message: [:0]const u8, position: Vec2, size: i32, color: sdl.Color },
-    texture: struct { texture: sdl.Texture, position: Vec2, rotation: f32, scale: f32, tint: sdl.Color },
+    texture: struct {
+        name: [:0]const u8,
+        position: Vec2,
+        crop: ?sdl.Rectangle,
+        tint: sdl.Color,
+        // pub fn draw(self: *const @This(), renderer: sdl.Renderer) !void {
+        //     // const t_info: sdl.Texture.Info = try self.asset.query();
+        //     const rect = sdl.Rectangle{ .x = @as(i32, @intFromFloat(self.position.x)), .y = @as(i32, @intFromFloat(self.position.y)), .width = 1000, .height = 1000 };
+        //     // std.debug.print("\x1b[94mTexture Info\x1b[0m {}\n \x1b[92mRect\x1b[0m: {}\n", .{ t_info, &rect });
+        //     _ = rect;
+        //     try renderer.copy(self.asset, null, null);
+        // }
+    },
+    text: struct {
+        message: [:0]const u8,
+        position: Vec2,
+        crop: ?sdl.Rectangle,
+        color: sdl.Color,
+        font_size: i32,
+        font_name: [:0]const u8,
+    },
     fps: struct { position: Vec2 },
 };
 
@@ -202,7 +210,7 @@ pub const RendererManager = struct {
         }
     }
 
-    fn consume_queue(self: *Self, renderer_id: []const u8) !void {
+    fn consume_queue(self: *Self, renderer_id: []const u8, asset_manager: *AssetManager) !void {
         const ren: sdl.Renderer = try self.getRenderer(renderer_id);
         if (self.render_queues.getPtr(renderer_id)) |rq| {
             var entries = std.ArrayList(Drawable).init(self.allocator);
@@ -225,11 +233,21 @@ pub const RendererManager = struct {
                             .rect => |r| {
                                 try r.draw(ren);
                             },
-                            .text => |t| {
-                                _ = t;
-                            },
+                            // .text => |t| {
+                            //     _ = t;
+                            // },
                             .texture => |t| {
-                                _ = t;
+                                const asset = try asset_manager.loadTexture(ren, t.name, true);
+                                // const rect = sdl.Rectangle{ .x = @as(i32, @intFromFloat(self.position.x)), .y = @as(i32, @intFromFloat(self.position.y)), .width = 1000, .height = 1000 };
+                                try ren.copy(asset, null, null);
+                                try asset_manager.unloadTexture(t.name, false);
+                            },
+                            .text => |t| {
+                                const asset = try asset_manager.loadFontTexture(ren, t.message, t.font_name, t.font_size, t.color);
+                                const asset_info = try asset.query();
+                                const rect = sdl.Rectangle{ .x = @as(i32, @intFromFloat(t.position.x)), .y = @as(i32, @intFromFloat(t.position.y)), .width = @as(i32, @intCast(asset_info.width)), .height = @as(i32, @intCast(asset_info.height)) };
+                                try ren.copy(asset, rect, t.crop);
+                                try asset_manager.unloadFontTexture(t.message, t.font_name, t.font_size, t.color, false);
                             },
                             .fps => |f| {
                                 _ = f;
@@ -246,21 +264,21 @@ pub const RendererManager = struct {
         }
     }
 
-    pub fn present(self: *Self, renderer_id: []const u8) !void {
+    pub fn present(self: *Self, renderer_id: []const u8, asset_manager: *AssetManager) !void {
         const ren: sdl.Renderer = self.renderers.get(renderer_id);
         try ren.setColor(0, 0, 0, 255);
         try ren.clear();
 
-        try self.consume_queue(renderer_id);
+        try self.consume_queue(renderer_id, asset_manager);
         ren.present();
     }
 
-    pub fn presentAll(self: *Self) !void {
+    pub fn presentAll(self: *Self, asset_manager: *AssetManager) !void {
         var iter = self.renderers.iterator();
         while (iter.next()) |r| {
             try r.value_ptr.setColor(.{ .r = 0, .g = 0, .b = 0, .a = 255 });
             try r.value_ptr.clear();
-            try self.consume_queue(r.key_ptr.*);
+            try self.consume_queue(r.key_ptr.*, asset_manager);
             r.value_ptr.present();
         }
     }

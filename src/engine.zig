@@ -35,6 +35,7 @@ pub const Engine = struct {
         engine.allocator = allocator;
 
         try sdl.init(SDL_DEFAULT_INIT_FLAGS);
+        try sdl.image.init(.{ .png = true });
 
         const wm = try allocator.create(window_manager.WindowManager);
         wm.* = try window_manager.WindowManager.init(allocator);
@@ -89,6 +90,7 @@ pub const Engine = struct {
         self.allocator.destroy(self.window_manager);
 
         sdl.quit();
+        sdl.image.quit();
 
         self.allocator.destroy(self);
     }
@@ -157,7 +159,7 @@ pub const Engine = struct {
                 }
             }
 
-            try self.renderer_manager.presentAll();
+            try self.renderer_manager.presentAll(self.asset_manager);
         }
         std.debug.print("Main Thread: Exiting main loop.\n", .{});
     }
