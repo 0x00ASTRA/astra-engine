@@ -16,6 +16,7 @@ const SDL_DEFAULT_INIT_FLAGS: sdl.InitFlags = .{
     .game_controller = true,
 };
 
+// TODO: Change to TOML config load. NEED config_manager
 const DEFAULT_WINDOW_CFG: window_manager.WindowConfig = .{ .title = "Main Window", .x = .{ .centered = {} }, .y = .{ .centered = {} }, .width = 1000, .height = 1000, .flags = .{ .borderless = true } };
 
 pub const Engine = struct {
@@ -61,6 +62,7 @@ pub const Engine = struct {
 
         try engine.scripting.setupBindings(engine);
 
+        // TODO: use config to determine this...
         try engine.scripting.doFile("scripts/engine/init.lua");
         try engine.scripting.doFile("scripts/game/main.lua");
 

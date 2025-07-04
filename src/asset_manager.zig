@@ -1,10 +1,14 @@
 const std = @import("std");
 const sdl = @import("sdl2");
 
+// TODO: Add timeout based garbage collection for offloading textures.
+// (once num users = 0) spawn thread that will check last time used, if
+// time > max_time then offload the asset
+
 pub const AssetType = union(enum) {
-    pub const ImageAsset = struct { surface: sdl.Surface, num_users: usize };
-    pub const TextureAsset = struct { texture: sdl.Texture, num_users: usize, keep: bool };
-    pub const FontAsset = struct { font: sdl.ttf.Font, num_users: usize };
+    pub const ImageAsset = struct { surface: sdl.Surface, num_users: usize, last_time_used: i64 };
+    pub const TextureAsset = struct { texture: sdl.Texture, num_users: usize, last_time_used: i64 };
+    pub const FontAsset = struct { font: sdl.ttf.Font, num_users: usize, last_time_used: i64 };
 
     image: ImageAsset,
     texture: TextureAsset,
@@ -13,6 +17,7 @@ pub const AssetType = union(enum) {
 
 pub const AssetManager = struct {
     const Self = @This();
+    var _GC_TIME: i64 = 30 * std.time.us_per_s;
     allocator: std.mem.Allocator,
     texture_pool: std.StringHashMap(AssetType.TextureAsset),
     image_pool: std.StringHashMap(AssetType.ImageAsset),
@@ -20,6 +25,7 @@ pub const AssetManager = struct {
     texture_mutex: std.Thread.Mutex,
     image_mutex: std.Thread.Mutex,
     font_mutex: std.Thread.Mutex,
+    gc_time: i64,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const t = std.StringHashMap(AssetType.TextureAsset).init(allocator);
@@ -34,8 +40,13 @@ pub const AssetManager = struct {
             .texture_mutex = std.Thread.Mutex{},
             .image_mutex = std.Thread.Mutex{},
             .font_mutex = std.Thread.Mutex{},
+            .gc_time = Self._GC_TIME,
         };
         return asset_manager;
+    }
+
+    pub fn setGCTime(self: *Self, new_time: i64) void {
+        self.gc_time = new_time;
     }
 
     pub fn deinit(self: *Self) void {
@@ -101,20 +112,16 @@ pub const AssetManager = struct {
         }
     }
 
-    pub fn loadTexture(self: *Self, renderer: sdl.Renderer, filename: [:0]const u8, keep: bool) !sdl.Texture {
+    pub fn loadTexture(self: *Self, renderer: sdl.Renderer, filename: [:0]const u8) !sdl.Texture {
         self.texture_mutex.lock();
         defer self.texture_mutex.unlock();
         if (self.texture_pool.getPtr(filename)) |t| {
             t.num_users += 1;
-            // std.debug.print("\x1b[96mCall to load texture\x1b[0m: '{s}'. \x1b[94mnum_users\x1b[0m: {d}\n", .{ filename, t.num_users });
+            t.last_time_used = std.time.microTimestamp();
             return t.texture;
         }
-        // const file = try std.fs.cwd().openFile(filename, .{ .mode = .read_only });
-        // defer file.close();
-        // const img_data = try file.readToEndAlloc(self.allocator, 134217728);
-        // const texture = try sdl.image.loadTextureMem(renderer, try self.allocator.dupeZ(u8, img_data), .png);
         const texture = try sdl.image.loadTexture(renderer, filename);
-        try self.texture_pool.put(try self.allocator.dupeZ(u8, filename), .{ .texture = texture, .num_users = 1, .keep = keep });
+        try self.texture_pool.put(try self.allocator.dupeZ(u8, filename), .{ .texture = texture, .num_users = 1, .last_time_used = std.time.microTimestamp() });
         std.debug.print("\x1b[96mCreated new texture\x1b[0m: '{s}'\n", .{filename});
         return texture;
     }
@@ -126,7 +133,8 @@ pub const AssetManager = struct {
             if (t.num_users > 0) {
                 t.num_users -= 1;
             }
-            if (t.num_users < 1 and (!t.keep or force)) {
+            const cur_time: i64 = std.time.microTimestamp();
+            if (t.num_users < 1 and cur_time - t.last_time_used > self.gc_time or force) {
                 _ = self.texture_pool.remove(filename);
                 t.texture.destroy();
                 std.debug.print("\x1b[96mAssetManager.unloadTexture]\x1b[0m Unloaded texture with id '{s}'\n", .{filename});
@@ -151,7 +159,7 @@ pub const AssetManager = struct {
         std.debug.print("\x1b[96mAssetManager.loadFont]\x1b[0m Loaded font with id '{s}'\n", .{f_name});
 
         const font_name_nonfree = try self.allocator.dupeZ(u8, @alignCast(f_name));
-        try self.font_pool.put(font_name_nonfree, .{ .font = font, .num_users = 1 });
+        try self.font_pool.put(font_name_nonfree, .{ .font = font, .num_users = 1, .last_time_used = std.time.microTimestamp() });
         return font;
     }
 
@@ -161,7 +169,7 @@ pub const AssetManager = struct {
         const font_name: [:0]const u8 = try std.fmt.allocPrintZ(self.allocator, "{s}_{d}", .{ filename, size });
         if (self.font_pool.get(font_name)) |f| {
             f.num_users -= 1;
-            if (f.num_users < 1) {
+            if (f.num_users < 1 and (std.time.microTimestamp() - f.last_time_used) > self.gc_time) {
                 f.font.close();
                 const k_ptr = self.font_pool.getKeyPtr(font_name).?;
                 self.font_pool.remove(font_name);
@@ -188,10 +196,10 @@ pub const AssetManager = struct {
         }
 
         const font = try self.loadFont(font_filename, font_size);
-        const surface = try font.renderTextSolid(msg_str, font_color); // TODO: change to enum switch
+        const surface = try font.renderTextSolid(message, font_color); // TODO: change to enum switch
         const texture = try sdl.createTextureFromSurface(renderer, surface);
         const name_z_non_free = try self.allocator.dupeZ(u8, @alignCast(&ft_name));
-        try self.texture_pool.put(name_z_non_free, .{ .texture = texture, .num_users = 1, .keep = true });
+        try self.texture_pool.put(name_z_non_free, .{ .texture = texture, .num_users = 1, .last_time_used = std.time.microTimestamp() });
         std.debug.print("\x1b[94m[LoadFontTexture]\x1b[0m  created texture with name '{s}'\n", .{&ft_name});
         return texture;
     }

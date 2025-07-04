@@ -31,6 +31,18 @@ fn getEngine(lua: *Lua) !*Engine {
     return lua.toUserdata(Engine, Lua.upvalueIndex(1));
 }
 
+fn sleep(lua: *Lua) c_int {
+    const num_args = lua.getTop();
+    const req_args = 1;
+    if (num_args != req_args) {
+        std.debug.print("\x1b91[msleep error\x1b[0m: Invalid number of arguments. Expected {d} recieved {d}", .{ req_args, num_args });
+        return 0;
+    }
+    const time: u64 = @as(u64, @intCast(lua.toInteger(1) catch 1));
+    std.Thread.sleep(std.time.ns_per_ms * time);
+    return 0;
+}
+
 const EngineTypes = @import("engine_types.zig");
 const Vec2 = EngineTypes.Vec2;
 
@@ -169,8 +181,8 @@ fn draw_text(lua: *Lua) c_int {
     };
 
     const num_args = lua.getTop();
-    if (num_args < 10) {
-        std.debug.print("\x1b[91mdraw_text error:\x1b[0m 10 arguments required, recieved {d}.\n", .{num_args});
+    if (num_args < 15) {
+        std.debug.print("\x1b[91mdraw_text error:\x1b[0m 15 arguments required, recieved {d}.\n", .{num_args});
         return 0;
     }
 
@@ -188,23 +200,31 @@ fn draw_text(lua: *Lua) c_int {
     const x: f32 = @as(f32, @floatCast(lua.toNumber(2) catch 0));
     const y: f32 = @as(f32, @floatCast(lua.toNumber(3) catch 0));
 
-    const font_name: [:0]const u8 = lua.toString(4) catch {
+    const scale: f32 = @as(f32, @floatCast(lua.toNumber(4) catch -1));
+
+    const font_name: [:0]const u8 = lua.toString(5) catch {
         std.debug.print("\x1b[91mdraw_text error:\x1b Expected string for param 'font_name'\n", .{});
         return 0;
     };
 
-    const font_size: i32 = @as(i32, @intFromFloat(lua.toNumber(5) catch 0));
+    const font_size: i32 = @as(i32, @intFromFloat(lua.toNumber(6) catch 0));
 
-    const r: u8 = @as(u8, @intFromFloat(lua.toNumber(6) catch 255));
-    const g: u8 = @as(u8, @intFromFloat(lua.toNumber(7) catch 255));
-    const b: u8 = @as(u8, @intFromFloat(lua.toNumber(8) catch 255));
-    const a: u8 = @as(u8, @intFromFloat(lua.toNumber(9) catch 255));
+    const r: u8 = @as(u8, @intFromFloat(lua.toNumber(7) catch 255));
+    const g: u8 = @as(u8, @intFromFloat(lua.toNumber(8) catch 255));
+    const b: u8 = @as(u8, @intFromFloat(lua.toNumber(9) catch 255));
+    const a: u8 = @as(u8, @intFromFloat(lua.toNumber(10) catch 255));
 
-    const msg: [:0]const u8 = lua.toString(10) catch {
+    const tr: u8 = @as(u8, @intFromFloat(lua.toNumber(11) catch 255));
+    const tg: u8 = @as(u8, @intFromFloat(lua.toNumber(12) catch 255));
+    const tb: u8 = @as(u8, @intFromFloat(lua.toNumber(13) catch 255));
+    const ta: u8 = @as(u8, @intFromFloat(lua.toNumber(14) catch 255));
+
+    const msg: [:0]const u8 = lua.toString(15) catch {
         std.debug.print("\x1b[91mdraw_text error\x1b[0m: Expected string for param 'msg'\n", .{});
         return 0;
     };
     const color: sdl.Color = sdl.Color.rgba(r, g, b, a);
+    const tint: sdl.Color = sdl.Color.rgba(tr, tg, tb, ta);
     const pos: Vec2 = Vec2{ .x = x, .y = y };
     // const ren: sdl.Renderer = engine.renderer_manager.getRenderer(window_id) catch {
     //     std.debug.print("\x1b[91mdraw_text error:\x1b[0m Failed to get renderer instance with id: '{s}'\n", .{window_id});
@@ -215,7 +235,7 @@ fn draw_text(lua: *Lua) c_int {
     //     std.debug.print("\x1b[91mdraw_text error:\x1b[0m Failed to load texture from text with content:\n    - msg: '{s}'\n    - size: {d}\n    - color: {}\n", .{ msg, font_size, color });
     //     return 0;
     // };
-    engine.renderer_manager.queue(window_id, .{ .two_dimensional = .{ .text = .{ .message = msg, .crop = null, .font_name = font_name, .font_size = font_size, .position = pos, .color = sdl.Color.rgba(255, 255, 255, 255) } } }) catch {
+    engine.renderer_manager.queue(window_id, .{ .two_dimensional = .{ .text = .{ .message = msg, .crop = null, .tint = tint, .scale = scale, .font_name = font_name, .font_size = font_size, .position = pos, .color = sdl.Color.rgba(255, 255, 255, 255) } } }) catch {
         std.debug.print("\x1b[91mdraw_text error:\x1b[0m Failed to queue text with the renderer manager with data:\n    \x1b[91m-\x1b[0m \x1b[94mmsg\x1b[0m: {s}\n    \x1b[91m-\x1b[0m \x1b[94mfont\x1b[0m: {s}\n    \x1b[91m-\x1b[0m \x1b[94msize\x1b[0m: {d}\n    \x1b[91m-\x1b[0m \x1b[94mcolor\x1b[0m: {}\n    \x1b[91m-\x1b[0m \x1b[94mposition\x1b[0m: {},{}", .{ msg, font_name, font_size, color, pos.x, pos.y });
         return 0;
     };
@@ -248,10 +268,8 @@ fn draw_texture(lua: *Lua) c_int {
     const x: f32 = @as(f32, @floatCast(lua.toNumber(2) catch 0));
     const y: f32 = @as(f32, @floatCast(lua.toNumber(3) catch 0));
 
-    const w: i32 = @as(i32, @intFromFloat(lua.toNumber(4) catch 0));
-    const h: i32 = @as(i32, @intFromFloat(lua.toNumber(5) catch 0));
-    _ = w;
-    _ = h;
+    const w: f32 = @as(f32, @floatCast(lua.toNumber(4) catch 0));
+    const h: f32 = @as(f32, @floatCast(lua.toNumber(5) catch 0));
 
     const filename: [:0]const u8 = lua.toString(6) catch {
         std.debug.print("\x1b[91mdraw_texture error:\x1b Expected string for param 'filename'\n", .{});
@@ -265,6 +283,7 @@ fn draw_texture(lua: *Lua) c_int {
 
     const color: sdl.Color = sdl.Color.rgba(r, g, b, a);
     const pos: Vec2 = Vec2{ .x = x, .y = y };
+    const size = Vec2{ .x = w, .y = h };
     // const ren: sdl.Renderer = engine.renderer_manager.getRenderer(window_id) catch {
     //     std.debug.print("\x1b[91mdraw_text error:\x1b[0m Failed to get renderer instance with id: '{s}'\n", .{window_id});
     //     return 0;
@@ -275,7 +294,7 @@ fn draw_texture(lua: *Lua) c_int {
     //     return 0;
     // };
 
-    engine.renderer_manager.queue(window_id, .{ .two_dimensional = .{ .texture = .{ .name = filename, .crop = null, .position = pos, .tint = sdl.Color.rgba(255, 255, 255, 255) } } }) catch {
+    engine.renderer_manager.queue(window_id, .{ .two_dimensional = .{ .texture = .{ .name = filename, .crop = null, .size = size, .position = pos, .tint = sdl.Color.rgba(255, 255, 255, 255) } } }) catch {
         std.debug.print("\x1b[91mdraw_text error:\x1b[0m Failed to queue text with the renderer manager with data:\n    \x1b[91m-\x1b[0m \x1b[94mname\x1b[0m: {s}\n    \x1b[91m-\x1b[0m \x1b[94mcolor\x1b[0m: {}\n    \x1b[91m-\x1b[0m \x1b[94mposition\x1b[0m: {},{}", .{ filename, color, pos.x, pos.y });
         return 0;
     };
@@ -284,6 +303,7 @@ fn draw_texture(lua: *Lua) c_int {
 
 const FN_ENTRIES = [_]FnEntry{
     .{ .table = "Engine", .name = "log", .func = zlua.wrap(log) }, // MUST USE WRAP ON Fn's
+    .{ .table = "Engine", .name = "sleep", .func = zlua.wrap(sleep) }, // MUST USE WRAP ON Fn's
     .{ .table = "Engine", .name = "get_main_window_id", .func = zlua.wrap(get_main_window_id) },
     .{ .table = "Engine", .name = "get_window_dimensions", .func = zlua.wrap(get_window_dimensions) },
     .{ .table = "Render", .name = "draw_circle", .func = zlua.wrap(draw_circle) },
